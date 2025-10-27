@@ -1,0 +1,11 @@
+name = "edge-api"          # or whatever you named the Worker in the dashboard
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[vars]
+RL_LIMIT = "60"
+RL_WINDOW = "60"
