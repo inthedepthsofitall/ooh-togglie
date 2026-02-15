@@ -1,0 +1,35 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    # make secrets available as env, so we can check them in step-level if:
+    env:
+      STAGE_BASE: ${{ secrets.STAGE_BASE }}
+      STAGE_API_KEY: ${{ secrets.STAGE_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run lint
+
+      # Optional: k6 smoke on /v1/evaluate (runs ONLY if both secrets are set)
+      - name: Setup k6
+        if: ${{ env.STAGE_BASE != '' && env.STAGE_API_KEY != '' }}
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 evaluate smoke
+        if: ${{ env.STAGE_BASE != '' && env.STAGE_API_KEY != '' }}
+        run: k6 run k6/eval.js
+        env:
+          BASE: ${{ env.STAGE_BASE }}
+          API_KEY: ${{ env.STAGE_API_KEY }}

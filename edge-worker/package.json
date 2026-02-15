@@ -3,22 +3,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "dev": "wrangler dev --port 8799 --persist-to .wrangler/state",
+    "deploy": "npx wrangler deploy",
+    "typecheck": "tsc -noEmit",
+    "lint": "eslint .",
+    "smoke:k6": "k6 run k6/eval.js",
+    "test:contract": "vitest run openapi.e2e.test.ts"
   },
   "dependencies": {
-    "hono": "^4.6.6",
-    "@hono/zod-openapi": "^0.16.3",
     "@hono/swagger-ui": "^0.4.0",
-    "zod": "^3.23.8",
+    "@hono/zod-openapi": "^0.16.3",
     "@neondatabase/serverless": "^0.10.3",
-    "@upstash/redis": "^1.31.3"
+    "@upstash/redis": "^1.31.3",
+    "hono": "^4.6.6",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "wrangler": "^3.74.0",
     "@cloudflare/workers-types": "^4.20240903.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "wrangler": "^4.45.1"
   }
 }
-
-

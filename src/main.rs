@@ -1,60 +1,85 @@
 use std::net::SocketAddr;
-use axum::{routing::{get, post}, Router};
-use axum_prometheus::PrometheusMetricLayer;
-use tower::{ServiceBuilder, limit::RateLimitLayer};
-use tower_http::trace::TraceLayer;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-use utopia_swagger_ui::SwaggerUi;
+use tokio::net::TcpListener;
 
-mod config; mod telemetry; mod routes; mod state; mod db;
+use utoipa::OpenApi;
+use axum::{routing::get, Router};
+use axum_prometheus::PrometheusMetricLayer;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{fmt, EnvFilter, prelude::*};
+
+
+mod routes;
+mod state;
+mod db;
+
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(routes::health::health, routes::items::list_items, routes::create_item),
-    components(schemas(routes::items::Item, routes::items::NewItem)),
-    tags((name = "items", description = "Item CRUD"))
+    paths(
+        crate::routes::health::health,
+        crate::routes::items::list_items,
+        crate::routes::items::create_item
+    ),
+    components(schemas(
+        crate::routes::health::HealthStatus,
+        crate::routes::items::Item,
+        crate::routes::items::NewItem
+    )),
+    tags(
+        (name = "health", description = "Service liveness & readiness"),
+        (name = "items", description = "Item CRUD")
+    )
 )]
 struct ApiDoc;
+
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
+    tracing::info!("DATABASE_URL={}", std::env::var("DATABASE_URL").unwrap_or_default());
 
-    //logging plus optional OpenTelemetry Bridge
-    let filter = EnvFilter::try_from_default_env()
-.unwrap_or_else(|_| EnvFilter::new("info"));
-let fmt_layer = fmt::layer().with_target(false);
-tracing_subscriber::registry().with(fmt_layer).init();
 
-let pool = db::init_pool().await?;
-let app_state = state::AppState { pool };
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let fmt_layer = fmt::layer().with_target(false);
+    tracing_subscriber::registry().with(fmt_layer).with(filter).init();
 
-// Prometheus metrics layer
-let (prom_layer, metric_handle) = PrometheusMetricLayer::pair();
+    let pool = db::init_pool().await?;
+    let url = std::env::var("DATABASE_URL")?;
+    tracing::info!("DATABASE_URL host={}", url.split('@').nth(1).unwrap_or("unknown"));
 
-let api = Router::new()
-    .merge(routes::health::router())
-    .merge(routes::items::router())
-    .route("/metrics", get(|| async move { metric_handle.render() }));
-let rate_per_sec: u64 = std::env::var("APP_RATE_LIMIT_PER_SECOND").ok()
-    .and_then(|v| v.parse().ok()).unwrap_or(50);
+    let app_state = state::AppState { pool };
 
-let middleware = ServiceBuilder::new()
-    .layer(TraceLayer::new_for_http())
-    .layer(RateLimitLayer::new(rate_per_sec, std::Duration::from_secs(1)))
-    .layer(prom_layer);
+    let (prom_layer, handle) = PrometheusMetricLayer::pair();
 
-let app = Router::new()
-    .merge(api)
-    .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
-    .with_state(app_state)
-    .layer(middleware);
+    let api = routes::router()
+        .route("/metrics", get(move || {
+            let h = handle.clone();
+            async move { h.render() }
+        }));
 
-let host = std::env::var("APP_HOST").unwrap_or("0.0.0.0".into());
-let port = u16 = std::env::var("APP_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
-let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
 
-tracing::info!(%addr, "listening");
-axum::Server::bind(&addr).serve(app.into_make_service()).await?;
-Ok(())
+    let app = Router::new()
+        .merge(api)
+        .merge(utoipa_swagger_ui::SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .with_state(app_state)
+        .layer(prom_layer)
+        .layer(TraceLayer::new_for_http());
+
+    let host = std::env::var("APP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port: u16 = std::env::var("APP_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
+
+
+    let addr: SocketAddr = format!("{}:{}", host, port)
+        .parse()
+        .expect("invalid host/port");
+
+    let listener = TcpListener::bind(addr).await?;
+    tracing::info!(%addr, "listening");
+
+    axum::serve(listener, app).await?;
+
+
+
+    Ok(())
 }

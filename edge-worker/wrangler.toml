@@ -1,7 +1,16 @@
-name = "edge-api"          # or whatever you named the Worker in the dashboard
+name = "edge-worker"
 main = "src/index.ts"
-compatibility_date = "2024-09-01"
+compatibility_date = "2025-10-11"
 compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./site"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "togglie-db"
+database_id = "684e51d7-a77c-43d4-9035-3437a621aed6"
 
 [observability]
 enabled = true
@@ -9,3 +18,8 @@ enabled = true
 [vars]
 RL_LIMIT = "60"
 RL_WINDOW = "60"
+DEMO_MODE = "1"
+ROLLOUT_PCT = "100"
+RUST_BASE = "http://localhost:8080"
+SHOW_DOCS = "1"
+SHOW_ADMIN = "1"

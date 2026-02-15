@@ -1,10 +1,27 @@
-use axum::{routing::get, Router};
-use axum::http::StatusCode;
+use axum::{routing::get, Json, Router};
+// use axum::http::StatusCode;
+use crate::state::AppState;
+use serde::Serialize;
+use utoipa::ToSchema;
 
-pub fn router() -> Router {
+#[derive(Serialize, ToSchema)]
+pub struct HealthStatus {
+    pub ok: bool,
+}
+
+pub fn router() -> Router<AppState> {
     Router::new().route("/health", get(health))
 }
 
-#[utopia::path(get, path = "/health")]
-pub async fn health() -> StatusCode { StatusCode::OK }
+#[utoipa::path(
+    get,
+    path = "/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service healthy", body = HealthStatus)
+    )
+)]
+pub async fn health() -> Json<HealthStatus> {
+    Json(HealthStatus { ok: true })
+}
 
